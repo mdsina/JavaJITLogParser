@@ -24,6 +24,36 @@ namespace JavaJITLogParser
             }
         }
 
+        static void AppendMethodToStat(
+            string type,
+            string methodField,
+            XmlReader reader,
+            Dictionary<string, uint> trapsStat,
+            Dictionary<string, uint> deoptStat)
+        {
+            var element = XNode.ReadFrom(reader) as XElement;
+            AppendMethodToStat(type, methodField, element, trapsStat, deoptStat);
+        }
+
+        static void AppendMethodToStat(
+            string type,
+            string methodField,
+            XElement element,
+            Dictionary<string, uint> trapsStat,
+            Dictionary<string, uint> deoptStat)
+        {
+            var stat = type == "uncommon_trap" ? trapsStat : deoptStat;
+            string method = element.Attribute(methodField).Value;
+            if (stat.ContainsKey(method))
+            {
+                stat[method]++;
+            }
+            else
+            {
+                stat[method] = 0;
+            }
+        }
+
         static void Parse(FileInfo input, FileInfo outputDeoptimized, FileInfo outputUncommonTraps)
         {
             var deoptStat = new Dictionary<string, uint>();
@@ -42,6 +72,14 @@ namespace JavaJITLogParser
                     {
                         string type = reader.Name;
 
+                        if (type == "uncommon_trap")
+                        {
+                            var element = XNode.ReadFrom(reader) as XElement;
+                            string reason = element.Attribute("reason").Value;
+                            if (reason == "transfer_to_interpreter")
+                                AppendMethodToStat(type, "jvmci_mirror_name", element, trapStat, deoptStat);
+                        }
+
                         while (SafeRead(reader))
                         {
                             if (reader.NodeType == XmlNodeType.EndElement)
@@ -50,18 +88,8 @@ namespace JavaJITLogParser
                             if (reader.NodeType != XmlNodeType.Element)
                                 continue;
 
-                            var stat = type == "uncommon_trap" ? trapStat : deoptStat;
-
-                            var element = XElement.ReadFrom(reader) as XElement;
-                            string method = element.Attribute("method").Value;
-                            if (stat.ContainsKey(method))
-                            {
-                                stat[method]++;
-                            }
-                            else
-                            {
-                                stat[method] = 0;
-                            }
+                            if (reader.Name == "jvms")
+                                AppendMethodToStat(type, "method", reader, trapStat, deoptStat);
                         }
                     }
                 }
